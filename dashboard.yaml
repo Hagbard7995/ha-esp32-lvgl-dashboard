@@ -1,0 +1,265 @@
+esphome:
+  name: ha-esp32-lvgl-dashboard
+  friendly_name: "HA ESP32 LVGL Dashboard"
+
+esp32:
+  board: esp32s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Ha-Esp32-Lvgl-Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+# I2C for touch controller
+i2c:
+  sda: GPIO3
+  scl: GPIO4
+  frequency: 400kHz
+
+# SPI for display
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO6
+  miso_pin: GPIO8
+
+# Display Configuration - ILI9341
+display:
+  - platform: ili9xxx
+    model: ILI9341
+    cs_pin: GPIO5
+    dc_pin: GPIO9
+    reset_pin: GPIO46
+    spi_id: default
+    dimensions:
+      width: 800
+      height: 480
+    update_interval: 50ms
+    transform:
+      swap_xy: false
+      mirror_x: false
+      mirror_y: false
+
+# Touch input - GT911 capacitive touch
+touchscreen:
+  - platform: gt911
+    interrupt_pin: GPIO46
+    reset_pin: GPIO1
+    address: 0x5D
+    transform:
+      swap_xy: false
+      mirror_x: false
+      mirror_y: false
+
+# LVGL UI Configuration
+lvgl:
+  displays:
+    - display_id: main_display
+  theme: default
+  pages:
+    - id: home_page
+      widgets:
+        # Title
+        - label:
+            id: page_title
+            text: "Home Dashboard"
+            align: center
+            text_font: montserrat_28
+            x: 0
+            y: 20
+            width: 800
+            height: 50
+
+        # Light Control Button
+        - button:
+            id: light_btn
+            x: 50
+            y: 100
+            width: 150
+            height: 80
+            text: "💡 Light"
+            text_font: montserrat_20
+            on_click:
+              then:
+                - homeassistant.service:
+                    service: light.toggle
+                    data:
+                      entity_id: light.living_room
+
+        # Fan Control Button
+        - button:
+            id: fan_btn
+            x: 250
+            y: 100
+            width: 150
+            height: 80
+            text: "🌀 Fan"
+            text_font: montserrat_20
+            on_click:
+              then:
+                - homeassistant.service:
+                    service: fan.toggle
+                    data:
+                      entity_id: fan.bedroom
+
+        # Climate Control Button
+        - button:
+            id: climate_btn
+            x: 450
+            y: 100
+            width: 150
+            height: 80
+            text: "🌡️ Climate"
+            text_font: montserrat_20
+            on_click:
+              then:
+                - homeassistant.service:
+                    service: climate.set_temperature
+                    data:
+                      entity_id: climate.living_room
+                      temperature: 22
+
+        # Lock Control Button
+        - button:
+            id: lock_btn
+            x: 650
+            y: 100
+            width: 100
+            height: 80
+            text: "🔒 Lock"
+            text_font: montserrat_20
+            on_click:
+              then:
+                - homeassistant.service:
+                    service: lock.toggle
+                    data:
+                      entity_id: lock.front_door
+
+        # Status Display
+        - label:
+            id: status_label
+            text: "Status: Ready"
+            align: center
+            text_font: montserrat_16
+            x: 0
+            y: 220
+            width: 800
+            height: 40
+
+        # Entity State Display
+        - label:
+            id: light_status
+            text: "Light: Off"
+            text_font: montserrat_14
+            x: 50
+            y: 280
+            width: 300
+            height: 60
+
+        - label:
+            id: fan_status
+            text: "Fan: Off"
+            text_font: montserrat_14
+            x: 400
+            y: 280
+            width: 300
+            height: 60
+
+        # Control Buttons Row 2
+        - button:
+            id: scene_btn
+            x: 50
+            y: 370
+            width: 150
+            height: 60
+            text: "🎬 Scene"
+            text_font: montserrat_16
+            on_click:
+              then:
+                - homeassistant.service:
+                    service: scene.turn_on
+                    data:
+                      entity_id: scene.evening
+
+        - button:
+            id: refresh_btn
+            x: 250
+            y: 370
+            width: 150
+            height: 60
+            text: "🔄 Refresh"
+            text_font: montserrat_16
+            on_click:
+              then:
+                - logger.log: "Refresh button pressed"
+
+        - button:
+            id: settings_btn
+            x: 450
+            y: 370
+            width: 150
+            height: 60
+            text: "⚙️ Settings"
+            text_font: montserrat_16
+            on_click:
+              then:
+                - logger.log: "Settings button pressed"
+
+# Sensors to update dashboard
+sensor:
+  - platform: homeassistant
+    name: "Light Status"
+    entity_id: light.living_room
+    id: light_sensor
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light_status
+            property: text
+            value: !lambda |-
+              return "Light: " + id(light_sensor).state;
+
+  - platform: homeassistant
+    name: "Fan Status"
+    entity_id: fan.bedroom
+    id: fan_sensor
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: fan_status
+            property: text
+            value: !lambda |-
+              return "Fan: " + id(fan_sensor).state;
+
+  - platform: homeassistant
+    name: "Temperature"
+    entity_id: climate.living_room
+    attribute: current_temperature
+    id: temp_sensor
+    unit_of_measurement: "°C"
+
+# Binary sensors for Home Assistant integration
+binary_sensor:
+  - platform: homeassistant
+    name: "Motion Sensor"
+    entity_id: binary_sensor.living_room_motion
+    id: motion_sensor
